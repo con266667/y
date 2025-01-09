@@ -32,7 +32,6 @@ export default function useFetchStories() {
   const [papers, setPapers] = useState<ArticleProps[]>([]);
   const [newsStories, setNewsStories] = useState<NewsStory[]>([]);
   const [interestNewsStories, setInterestNewsStories] = useState<NewsStory[]>([]);
-  const [canadianNewsStories, setCanadianNewsStories] = useState<NewsStory[]>([]);
   const [internationalNewsStories, setInternationalNewsStories] = useState<NewsStory[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [seenArticles, setSeenArticles] = useState<Set<string>>(new Set());
@@ -60,7 +59,8 @@ export default function useFetchStories() {
             const fetchedPapers = entries.map((entry: any) => ({
               title: entry.title[0].replace(/\s+/g, ' ').trim(),
               content: entry.summary[0].replace(/\s+/g, ' ').trim(),
-              date: formatDistanceToNow(new Date(entry.published[0]), { addSuffix: true }),
+            //   date: formatDistanceToNow(new Date(entry.published[0]), { addSuffix: true }),
+              date: entry.published[0],
               authors: entry.author.map((author: any) => author.name[0]),
               link: entry.id[0],
             }));
@@ -69,10 +69,13 @@ export default function useFetchStories() {
         });
       };
 
-      const results = await Promise.all(categories.map(fetchCategory));
-      // Sort by date
-        results.forEach((papers) => papers.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-      setPapers(results.flat());
+      const resultsByCategory = await Promise.all(categories.map(fetchCategory));
+      const results = resultsByCategory.flat();
+      results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      results.forEach((paper) => {
+        paper.date = formatDistanceToNow(new Date(paper.date), { addSuffix: true });
+      });
+      setPapers(results);
     } catch (error) {
       console.error(error);
     }
@@ -173,21 +176,6 @@ export default function useFetchStories() {
     }
   };
 
-  const fetchCanadianNewsStories = async () => {
-    try {
-      const canadaResponse = await fetch(
-        'https://web-api-cdn.ground.news/api/public/place/CA/interest'
-      );
-      const canadaData = await canadaResponse.json();
-      const canadaId = canadaData.interest.id;
-      const stories = await storiesFromInterest(canadaId);
-
-      setCanadianNewsStories(stories);
-    } catch (error) {
-      console.error(error, 'Error fetching Canadian news stories');
-    }
-  }
-
   const fetchInterestStories = async () => {
     let allStories = [];
     for (const category of groundNewsCategories) {
@@ -268,6 +256,7 @@ export default function useFetchStories() {
     let seen = await loadSeenArticles();
     await Promise.all([
       fetchPapers(),
+      fetchAISummaries(),
       fetchGroundNewsStories(),
       fetchInterestStories(),
     ]);
@@ -290,11 +279,10 @@ export default function useFetchStories() {
 
   const interleaveItems = (): Array<ArticleProps | NewsStory> => {
     const allNewsStories = [];
-    const maxNewsLen = Math.max(newsStories.length, canadianNewsStories.length, internationalNewsStories.length, techNewsStories.length);
+    const maxNewsLen = Math.max(newsStories.length, interestNewsStories.length);
     for (let i = 0; i < maxNewsLen; i++) {
       if (i < newsStories.length) allNewsStories.push(newsStories[i]);
-      if (i < techNewsStories.length) allNewsStories.push(techNewsStories[i]);
-      if (i < canadianNewsStories.length) allNewsStories.push(canadianNewsStories[i]);
+      if (i < interestNewsStories.length) allNewsStories.push(interestNewsStories[i]);
       if (i < internationalNewsStories.length) allNewsStories.push(internationalNewsStories[i]);
     }
 
@@ -312,7 +300,6 @@ export default function useFetchStories() {
   return {
     papers,
     newsStories,
-    canadianNewsStories,
     internationalNewsStories,
     refreshing,
     seenArticles,
@@ -320,7 +307,6 @@ export default function useFetchStories() {
     isLoading,
     fetchPapers,
     fetchGroundNewsStories,
-    fetchCanadianNewsStories,
     fetchInternationalNewsStories,
     loadSeenArticles,
     saveSeenArticles,

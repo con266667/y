@@ -14,10 +14,6 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   const {
-    papers,
-    newsStories,
-    canadianNewsStories,
-    internationalNewsStories,
     isLoading,
     refreshing,
     onRefresh,

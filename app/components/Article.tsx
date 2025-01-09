@@ -48,7 +48,7 @@ const Article: React.FC<ArticleProps> = ({ title, content, date, authors, link }
       {date && <Text style={[styles.articleDate, isDarkMode && styles.articleDateDark]}>{date}</Text>}
       <Text style={[styles.articleAuthors, isDarkMode && styles.articleAuthorsDark]} numberOfLines={2} ellipsizeMode="tail">{authors.join(', ')}</Text>
       {/* <View>{renderContent(content)}</View> */}
-      <Text>{content}</Text>
+      <Text style={[styles.articleContent, isDarkMode && styles.articleContentDark]}>{content}</Text>
     </>
   );
 };
