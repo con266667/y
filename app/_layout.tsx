@@ -3,7 +3,7 @@ import { ScrollView, View, Text, StyleSheet, Dimensions, useColorScheme, Refresh
 import { parseString } from 'react-native-xml2js';
 import { formatDistanceToNow } from 'date-fns';
 import MathView from 'react-native-math-view';
-// import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Article from './components/Article';
 import NewsArticle from './components/NewsArticle';
 import useFetchStories from './hooks/useFetchStories';

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { parseString } from 'react-native-xml2js';
 import { formatDistanceToNow } from 'date-fns';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ArticleProps {
   title: string;
@@ -30,14 +31,17 @@ interface NewsStory {
 export default function useFetchStories() {
   const [papers, setPapers] = useState<ArticleProps[]>([]);
   const [newsStories, setNewsStories] = useState<NewsStory[]>([]);
+  const [interestNewsStories, setInterestNewsStories] = useState<NewsStory[]>([]);
   const [canadianNewsStories, setCanadianNewsStories] = useState<NewsStory[]>([]);
   const [internationalNewsStories, setInternationalNewsStories] = useState<NewsStory[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [seenArticles, setSeenArticles] = useState<Set<string>>(new Set());
   const [previousIndex, setPreviousIndex] = useState(-1);
   const [isLoading, setIsLoading] = useState(true);
+  const [aiSummaries, setAISummaries] = useState<ArticleProps[]>([]);
 
   const categories = ['cs.RO', 'math.OC'];
+  const groundNewsCategories = ['tech', 'space']
 
   const fetchPapers = async () => {
     try {
@@ -66,11 +70,39 @@ export default function useFetchStories() {
       };
 
       const results = await Promise.all(categories.map(fetchCategory));
+      // Sort by date
+        results.forEach((papers) => papers.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       setPapers(results.flat());
     } catch (error) {
       console.error(error);
     }
   };
+
+  const fetchAISummaries = async () => {
+    try {
+        const url = 'https://articles.connorw.org:5291/articles.json';
+        const response = await fetch(url);
+        // Format {'arbitary id': {'title': '...', 'content': '...'}}
+        const data: Record<string, any> = await response.json();
+        let articles = []
+        for (const item in data) {
+            for (const article in data[item]) {
+                articles.push({
+                    title: data[item][article].title,
+                    content: data[item][article].content,
+                    date: '',
+                    authors: ['GPT'],
+                    link: `${item}-${data[item][article].title}`
+                });
+            }
+        }
+
+        setAISummaries(articles);
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+  }
 
   const storiesFromInterest = async (interestId: string) => {
     try {
@@ -97,7 +129,7 @@ export default function useFetchStories() {
             name: source.sourceInfo.name,
             sourceId: source.sourceId,
             url: source.url,
-            factuality: source.sourceInfo.factuality == "veryHigh"
+            factuality: source.sourceInfo.factuality
           })),
         };
 
@@ -128,7 +160,6 @@ export default function useFetchStories() {
       const discoverResponse = await fetch(
         'https://web-api-cdn.ground.news/api/public/interests/discover'
       );
-      console.log(discoverResponse);
       const discoverData = await discoverResponse.json();
       // Element where name==popular
       const popularElement = discoverData.find((i: any) => i.id === 'popular');
@@ -157,6 +188,21 @@ export default function useFetchStories() {
     }
   }
 
+  const fetchInterestStories = async () => {
+    let allStories = [];
+    for (const category of groundNewsCategories) {
+      const response = await fetch(
+        `https://web-api-cdn.ground.news/api/public/interest/${category}`
+      );
+      const data = await response.json();
+      const stories = await storiesFromInterest(data.interest.id);
+      allStories.push(...stories);
+    }
+    // Sort
+    allStories.sort((a, b) => (a.sources ?? []).length - (b.sources ?? []).length);
+    setInterestNewsStories(allStories);
+  }
+
   const fetchGroundNewsStories = async () => {
     try {
       const response = await fetch(
@@ -175,12 +221,12 @@ export default function useFetchStories() {
           name: source.sourceInfo.name,
           sourceId: source.sourceId,
           url: source.url,
-          valid: source.sourceInfo.factuality=="veryHigh"
+          factuality: source.sourceInfo.factuality
         })),
       }));
       // Filter sources that are not valid
       stories.forEach(story => {
-        story.sources = story.sources.filter(source => source.valid);
+        story.sources = story.sources.filter(source => source.factuality == "veryHigh");
       });
 
       setNewsStories(stories);
@@ -190,26 +236,28 @@ export default function useFetchStories() {
   };
 
   const loadSeenArticles = async () => {
-    // try {
-    //   const savedArticles = await AsyncStorage.getItem('seenArticles');
-    //   if (savedArticles) {
-    //     setSeenArticles(new Set(JSON.parse(savedArticles)));
-    //   }
-    // } catch (error) {
-    //   console.error('Error loading seen articles:', error);
-    // }
+    try {
+      const savedArticles = await AsyncStorage.getItem('seenArticles');
+      if (savedArticles) {
+        setSeenArticles(new Set(JSON.parse(savedArticles)));
+        return new Set(JSON.parse(savedArticles));
+      }
+    } catch (error) {
+      console.error('Error loading seen articles:', error);
+    }
+
+    return new Set();
   };
 
   const saveSeenArticles = async (articles: Set<string>) => {
-    // try {
-    //   await AsyncStorage.setItem('seenArticles', JSON.stringify([...articles]));
-    // } catch (error) {
-    //   console.error('Error saving seen articles:', error);
-    // }
+    try {
+      await AsyncStorage.setItem('seenArticles', JSON.stringify([...articles]));
+    } catch (error) {
+      console.error('Error saving seen articles:', error);
+    }
   };
 
   const handleSwipeAway = (id: string) => {
-    console.log(`Swiped away ${id}`);
     const newSeenArticles = new Set(seenArticles).add(id);
     setSeenArticles(newSeenArticles);
     saveSeenArticles(newSeenArticles);
@@ -217,17 +265,21 @@ export default function useFetchStories() {
 
   const loadAllData = async () => {
     setIsLoading(true);
+    let seen = await loadSeenArticles();
     await Promise.all([
       fetchPapers(),
       fetchGroundNewsStories(),
-      fetchCanadianNewsStories(),
-      fetchInternationalNewsStories()
+      fetchInterestStories(),
     ]);
+
+    setAISummaries((prev) => prev.filter((summary) => !seen.has(summary.link)));
+    setPapers((prev) => prev.filter((paper) => !seen.has(paper.link)));
+    setNewsStories((prev) => prev.filter((story) => !seen.has(story.id)));
+    setInterestNewsStories((prev) => prev.filter((story) => !seen.has(story.id)));
     setIsLoading(false);
   };
 
   useEffect(() => {
-    loadSeenArticles();
     loadAllData();
   }, []);
 
@@ -238,17 +290,19 @@ export default function useFetchStories() {
 
   const interleaveItems = (): Array<ArticleProps | NewsStory> => {
     const allNewsStories = [];
-    const maxNewsLen = Math.max(newsStories.length, canadianNewsStories.length, internationalNewsStories.length);
+    const maxNewsLen = Math.max(newsStories.length, canadianNewsStories.length, internationalNewsStories.length, techNewsStories.length);
     for (let i = 0; i < maxNewsLen; i++) {
       if (i < newsStories.length) allNewsStories.push(newsStories[i]);
+      if (i < techNewsStories.length) allNewsStories.push(techNewsStories[i]);
       if (i < canadianNewsStories.length) allNewsStories.push(canadianNewsStories[i]);
       if (i < internationalNewsStories.length) allNewsStories.push(internationalNewsStories[i]);
     }
 
-    const maxLen = Math.max(papers.length, allNewsStories.length);
+    const maxLen = Math.max(papers.length, aiSummaries.length, allNewsStories.length);
     const merged: Array<ArticleProps | NewsStory> = [];
     for (let i = 0; i < maxLen; i++) {
       if (i < papers.length) merged.push(papers[i]);
+      if (i < aiSummaries.length) merged.push(aiSummaries[i]);
       if (i < allNewsStories.length) merged.push(allNewsStories[i]);
     }
 

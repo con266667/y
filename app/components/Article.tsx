@@ -45,9 +45,10 @@ const Article: React.FC<ArticleProps> = ({ title, content, date, authors, link }
       <TouchableOpacity onPress={() => handleTitlePress(link)}>
         <Text style={[styles.articleTitle, isDarkMode && styles.articleTitleDark]} numberOfLines={4} ellipsizeMode="tail">{title}</Text>
       </TouchableOpacity>
-      <Text style={[styles.articleDate, isDarkMode && styles.articleDateDark]}>{date}</Text>
+      {date && <Text style={[styles.articleDate, isDarkMode && styles.articleDateDark]}>{date}</Text>}
       <Text style={[styles.articleAuthors, isDarkMode && styles.articleAuthorsDark]} numberOfLines={2} ellipsizeMode="tail">{authors.join(', ')}</Text>
-      <View>{renderContent(content)}</View>
+      {/* <View>{renderContent(content)}</View> */}
+      <Text>{content}</Text>
     </>
   );
 };
